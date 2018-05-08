@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# Thomas Merkel <tm@core.io>
+# This script is a simple wrapper for openVPN and OpenConnect on FreeBSD
+# and might work only for my personal setup.
+
+## Static configuration
+confdir="${HOME}/.vpn"
+
+## Functions
+vpn_print() {
+	local input=${1}
+	printf "%12s %10s %10s\n" "Service" "Provider" "Status"
+	printf "%12s %10s %10s\n" "-------" "--------" "------"
+	for conf in ${confdir}/*${input}*.rc; do
+		[[ -e "${conf}" ]] || continue
+		local file=${conf##*/}
+		local type=(${file//./ })
+		local status=$(vpn_status ${file})
+		printf "%12s %10s %10s\n" ${type[0]} ${type[1]} ${status}
+	done
+}
+vpn_status() {
+	local file=${1}
+	if grep -q "pid-file" ${confdir}/${file} 2>/dev/null; then
+		# openconnect (pid-file)
+		pidfile=$(awk -F \= '/pid-file=/ {print $2}' ${confdir}/${file})
+		if sudo pgrep -F ${pidfile} >/dev/null 2>&1; then
+			echo enabled
+		else
+			echo disabled
+		fi
+	elif grep -q "openvpn_" ${confdir}/${file} 2>/dev/null; then
+		# openvpn (service|pid-file)
+		service=$(cat ${confdir}/${file})
+		if sudo service ${service} onestatus | grep -q "is running"; then
+			echo enabled
+		else
+			echo disabled
+		fi
+	elif sudo pgrep ${file} >/dev/null 2>&1; then
+		echo enabled
+	else
+		echo unknown
+	fi
+}
+vpn_exists() {
+	local file=${1}
+	if [[ ! -e ${confdir}/${file} ]]; then
+		echo_die "There is no configuration file for your VPN service!"
+	fi
+}
+
+vpn_enable() {
+	local input=(${1//./ })
+	local file="${input[0]}.${input[1]}.rc"
+	vpn_exists ${file}
+
+	case ${input[0]} in
+		openvpn)
+			service=$(cat ${confdir}/${file})
+			sudo service ${service} onestart
+			;;
+		openconnect)
+			host=$(head -n1 ${confdir}/${file} | tr -d '#')
+			if grep -q "passwd-on-stdin" ${confdir}/${file} 2>/dev/null; then
+				pass vpn/${input[0]}.${input[1]} | \
+					sudo openconnect --config ${confdir}/${file} ${host}
+			fi
+			sudo openconnect --config ${confdir}/${file} ${host}
+			;;
+	esac
+}
+
+vpn_disable() {
+	local input=(${1//./ })
+	local file="${input[0]}.${input[1]}.rc"
+	vpn_exists ${file}
+	
+	case ${input[0]} in
+		openvpn)
+			service=$(cat ${confdir}/${file})
+			sudo service ${service} onestop
+			;;
+		openconnect)
+			pidfile=$(awk -F \= '/pid-file=/ {print $2}' ${confdir}/${file})
+			sudo pkill -SIGINT -F ${pidfile}
+			;;
+	esac
+}
+
+vpn_help() {
+	echo "${0} [-l|-s|-e|-d|-h] [service.provider]"
+	echo
+	echo "OPTIONS:"
+	echo "  -l                       List all service providers"
+	echo "  -s [service.provider]    Status of service provider"
+	echo "  -e [service.provider]    Enable service provider"
+	echo "  -d [service.provider]    Disable service provider"
+	echo "  -h                       Show parameter information"
+}
+
+echo_die() {
+	echo ${@}
+	exit 1
+}
+
+check_sudo() {
+	if ! sudo -n uptime >/dev/null 2>&1; then
+		echo_die "You are not authorized to run sudo commands!"
+	fi
+}
+
+## Required sudo support
+check_sudo
+
+## Options
+while getopts hls:e:d: opt; do
+	case ${opt} in
+		l) vpn_print ;;
+		s) vpn_print ${OPTARG} ;;
+		e) vpn_enable ${OPTARG} ;;
+		d) vpn_disable ${OPTARG} ;;
+		h) vpn_help ;;
+		*) vpn_help ;;
+	esac
+done
