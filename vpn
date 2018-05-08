@@ -52,40 +52,57 @@ vpn_exists() {
 
 vpn_enable() {
 	local input=(${1//./ })
-	local file="${input[0]}.${input[1]}.rc"
-	vpn_exists ${file}
+	local rcfile="${input[0]}.${input[1]}.rc"
+	local shfile="${input[0]}.${input[1]}.enable.sh"
+	vpn_exists ${rcfile}
 
+	# Enable the service
 	case ${input[0]} in
 		openvpn)
-			service=$(cat ${confdir}/${file})
+			service=$(cat ${confdir}/${rcfile})
 			sudo service ${service} onestart
 			;;
 		openconnect)
-			host=$(head -n1 ${confdir}/${file} | tr -d '#')
-			if grep -q "passwd-on-stdin" ${confdir}/${file} 2>/dev/null; then
+			host=$(head -n1 ${confdir}/${rcfile} | tr -d '#')
+			if grep -q "passwd-on-stdin" ${confdir}/${rcfile} 2>/dev/null; then
 				pass vpn/${input[0]}.${input[1]} | \
-					sudo openconnect --config ${confdir}/${file} ${host}
+					sudo openconnect --config ${confdir}/${rcfile} ${host}
+			else
+				sudo openconnect --config ${confdir}/${rcfile} ${host}
 			fi
-			sudo openconnect --config ${confdir}/${file} ${host}
 			;;
 	esac
+
+	# Run post-enable wrapper
+	if [[ -e ${confdir}/${shfile} ]]; then
+		chmod u+x ${confdir}/${shfile}
+		sudo ${confdir}/${shfile}
+	fi
 }
 
 vpn_disable() {
 	local input=(${1//./ })
-	local file="${input[0]}.${input[1]}.rc"
-	vpn_exists ${file}
+	local rcfile="${input[0]}.${input[1]}.rc"
+	local shfile="${input[0]}.${input[1]}.disable.sh"
+	vpn_exists ${rcfile}
 	
+	# Disable the service
 	case ${input[0]} in
 		openvpn)
-			service=$(cat ${confdir}/${file})
+			service=$(cat ${confdir}/${rcfile})
 			sudo service ${service} onestop
 			;;
 		openconnect)
-			pidfile=$(awk -F \= '/pid-file=/ {print $2}' ${confdir}/${file})
+			pidfile=$(awk -F \= '/pid-file=/ {print $2}' ${confdir}/${rcfile})
 			sudo pkill -SIGINT -F ${pidfile}
 			;;
 	esac
+
+	# Run post-disable wrapper
+	if [[ -e ${confdir}/${shfile} ]]; then
+		chmod u+x ${confdir}/${shfile}
+		sudo ${confdir}/${shfile}
+	fi
 }
 
 vpn_help() {
