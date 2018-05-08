@@ -47,6 +47,16 @@ pid-file=/var/run/openconnect.example.pid
 user=super.user
 ```
 
+#### Use `pass`
+
+If the option `passwd-on-stdin` is used the `pass` command is executed to
+receive the password. You need to store the password in the following location:
+
+```
+vpn/service.provider
+```
+
+
 ### OpenVPN
 
 They only contains the existing rc-service name, for example:
