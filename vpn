@@ -24,7 +24,7 @@ vpn_status() {
 	if grep -q "pid-file" ${confdir}/${file} 2>/dev/null; then
 		# openconnect (pid-file)
 		pidfile=$(awk -F \= '/pid-file=/ {print $2}' ${confdir}/${file})
-		if sudo pgrep -F ${pidfile} >/dev/null 2>&1; then
+		if doas pgrep -F ${pidfile} >/dev/null 2>&1; then
 			echo enabled
 		else
 			echo disabled
@@ -32,12 +32,12 @@ vpn_status() {
 	elif grep -q "openvpn_" ${confdir}/${file} 2>/dev/null; then
 		# openvpn (service|pid-file)
 		service=$(cat ${confdir}/${file})
-		if sudo service ${service} onestatus | grep -q "is running"; then
+		if doas service ${service} onestatus | grep -q "is running"; then
 			echo enabled
 		else
 			echo disabled
 		fi
-	elif sudo pgrep ${file} >/dev/null 2>&1; then
+	elif doas pgrep ${file} >/dev/null 2>&1; then
 		echo enabled
 	else
 		echo unknown
@@ -61,15 +61,15 @@ vpn_enable() {
 	case ${input[0]} in
 		openvpn)
 			service=$(cat ${confdir}/${rcfile})
-			sudo service ${service} onestart > ${log} 2>&1
+			doas service ${service} onestart > ${log} 2>&1
 			;;
 		openconnect)
 			host=$(head -n1 ${confdir}/${rcfile} | tr -d '#')
 			if grep -q "passwd-on-stdin" ${confdir}/${rcfile} 2>/dev/null; then
 				pass vpn/${input[0]}.${input[1]} | \
-					sudo openconnect --config ${confdir}/${rcfile} ${host} > ${log} 2>&1
+					doas openconnect --config ${confdir}/${rcfile} ${host} > ${log} 2>&1
 			else
-				sudo openconnect --config ${confdir}/${rcfile} ${host} > ${log} 2>&1
+				doas openconnect --config ${confdir}/${rcfile} ${host} > ${log} 2>&1
 			fi
 			;;
 	esac
@@ -77,7 +77,7 @@ vpn_enable() {
 	# Run post-enable wrapper
 	if [[ -e ${confdir}/${shfile} ]]; then
 		chmod u+x ${confdir}/${shfile}
-		sudo ${confdir}/${shfile}
+		doas ${confdir}/${shfile}
 	fi
 }
 
@@ -92,18 +92,18 @@ vpn_disable() {
 	case ${input[0]} in
 		openvpn)
 			service=$(cat ${confdir}/${rcfile})
-			sudo service ${service} onestop >> ${log} 2>&1
+			doas service ${service} onestop >> ${log} 2>&1
 			;;
 		openconnect)
 			pidfile=$(awk -F \= '/pid-file=/ {print $2}' ${confdir}/${rcfile})
-			sudo pkill -SIGINT -F ${pidfile} >> ${log} 2>&1
+			doas pkill -SIGINT -F ${pidfile} >> ${log} 2>&1
 			;;
 	esac
 
 	# Run post-disable wrapper
 	if [[ -e ${confdir}/${shfile} ]]; then
 		chmod u+x ${confdir}/${shfile}
-		sudo ${confdir}/${shfile}
+		doas ${confdir}/${shfile}
 	fi
 }
 
@@ -123,14 +123,14 @@ echo_die() {
 	exit 1
 }
 
-check_sudo() {
-	if ! sudo -n uptime >/dev/null 2>&1; then
-		echo_die "You are not authorized to run sudo commands!"
+check_doas() {
+	if ! doas -n uptime >/dev/null 2>&1; then
+		echo_die "You are not authorized to run doas commands!"
 	fi
 }
 
-## Required sudo support
-check_sudo
+## Required doas support
+check_doas
 
 ## Options
 while getopts hls:e:d: opt; do
